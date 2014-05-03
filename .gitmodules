@@ -1,0 +1,3 @@
+[submodule "lua-jclass"]
+	path = lua-jclass
+	url = https://github.com/kamichidu/lua-jclass.git
