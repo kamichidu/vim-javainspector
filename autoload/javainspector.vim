@@ -33,6 +33,24 @@ let s:jclasspath= javaclasspath#get()
 
 let s:obj= {}
 
+function! s:init_classpath()
+    let l:classpaths= s:jclasspath.parse()
+
+    call filter(l:classpaths, 'v:val.kind ==# "lib"')
+    call map(l:classpaths, 'v:val.path')
+
+    lua << ...
+    local vimlist= vim.eval('l:classpaths')
+    local classpaths= {}
+
+    for i= 0, #vimlist - 1 do
+        table.insert(classpaths, vimlist[i])
+    end
+
+    _G.javainspector.jclass.classpath(classpaths)
+...
+endfunction
+
 function! s:init_lua()
     let l:jclass_path= globpath(&runtimepath, 'lua-jclass/') . '/lib/?.lua'
     let l:bridge_path= globpath(&runtimepath, 'lua/') . '/?.lua'
@@ -43,16 +61,18 @@ function! s:init_lua()
     package.path= package.path .. ';' .. jclass_path .. ';' .. bridge_path
 
     if not _G.javainspector then
-        _G.javainspector= {
+        local javainspector= {
             jclass= require 'jclass',
             bridge= require 'bridge',
         }
 
         local cache= {}
-        function _G.javainspector.get_jclass(canonical_name)
+        function javainspector:get_jclass(canonical_name)
             if cache[canonical_name] then
                 return cache[canonical_name]
             end
+
+            vim.command('call s:init_classpath()')
 
             local jc= self.jclass.for_name(canonical_name)
 
@@ -60,6 +80,8 @@ function! s:init_lua()
 
             return jc
         end
+
+        _G.javainspector= javainspector
     end
 ...
 endfunction
@@ -69,15 +91,19 @@ call s:init_lua()
 function! s:obj.for_name(canonical_name)
     lua << ...
     local canonical_name= vim.eval('a:canonical_name')
-    local jc= _G.javainspector.get_jclass(canonical_name)
+    local jc= _G.javainspector:get_jclass(canonical_name)
 
-    vim.command('let l:result=' .. _G.javainspector.bridge.to_vimrepl(jc))
+    if jc then
+        vim.command('let l:ok= 1')
+    else
+        vim.command('let l:ok= 0')
+    end
 ...
-    if !exists(l:result)
-        throw 'javainspector: illegal state'
+    if !l:ok
+        throw 'javainspector: class not found `' . a:canonical_name . '`'
     endif
 
-    return l:result
+    return javainspector#jclass#new(a:canonical_name)
 endfunction
 
 function! javainspector#get()
